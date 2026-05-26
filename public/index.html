@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>J.A.R.V.I.S.</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #020810;
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+      user-select: none;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+    }
+
+    /* Full-screen neural canvas */
+    #neural-canvas {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+    }
+
+    /* Scanlines */
+    .scanlines {
+      position: fixed;
+      inset: 0;
+      z-index: 1;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 3px,
+        rgba(0,0,0,0.04) 3px,
+        rgba(0,0,0,0.04) 4px
+      );
+      pointer-events: none;
+    }
+
+    /* Corner brackets */
+    .corner {
+      position: fixed;
+      width: 24px;
+      height: 24px;
+      z-index: 3;
+      pointer-events: none;
+    }
+    .corner-tl { top: 10px; left: 10px;   border-top: 1px solid rgba(0,168,255,.4); border-left: 1px solid rgba(0,168,255,.4); }
+    .corner-tr { top: 10px; right: 10px;  border-top: 1px solid rgba(0,168,255,.4); border-right: 1px solid rgba(0,168,255,.4); }
+    .corner-bl { bottom: 10px; left: 10px;  border-bottom: 1px solid rgba(0,168,255,.4); border-left: 1px solid rgba(0,168,255,.4); }
+    .corner-br { bottom: 10px; right: 10px; border-bottom: 1px solid rgba(0,168,255,.4); border-right: 1px solid rgba(0,168,255,.4); }
+
+    /* JARVIS logo — top centre, very subtle */
+    .jarvis-logo {
+      position: fixed;
+      top: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 3;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 8px;
+      color: rgba(0,168,255,.5);
+      text-shadow: 0 0 20px rgba(0,168,255,.3);
+      pointer-events: none;
+    }
+
+    /* State badge — bottom-right */
+    .state-badge {
+      position: fixed;
+      bottom: 70px;
+      right: 18px;
+      z-index: 3;
+      font-size: 8px;
+      letter-spacing: 3px;
+      color: rgba(0,255,136,.45);
+      text-shadow: 0 0 10px rgba(0,255,136,.2);
+      pointer-events: none;
+      transition: color .5s, text-shadow .5s;
+    }
+
+    /* Mic ripple indicator — bottom-left */
+    .mic-orb {
+      position: fixed;
+      bottom: 58px;
+      left: 22px;
+      z-index: 3;
+      width: 18px;
+      height: 18px;
+      pointer-events: none;
+    }
+    .mic-core {
+      position: absolute;
+      inset: 4px;
+      border-radius: 50%;
+      background: #00ff88;
+      box-shadow: 0 0 8px #00ff88;
+      transition: background .3s, box-shadow .3s;
+    }
+    .mic-ripple {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 1px solid rgba(0,255,136,.35);
+      animation: ripple 2.4s infinite;
+    }
+    .mic-ripple:nth-child(2) { animation-delay: .8s; }
+    .mic-ripple:nth-child(3) { animation-delay: 1.6s; }
+    @keyframes ripple {
+      0%   { transform: scale(.85); opacity: .7; }
+      100% { transform: scale(2.6); opacity: 0; }
+    }
+    .mic-core.hot { background: #ff6600; box-shadow: 0 0 10px #ff6600; }
+    .mic-ripple.hot { border-color: rgba(255,102,0,.4); }
+
+    /* Interim speech — floats above footer */
+    .interim-float {
+      position: fixed;
+      bottom: 60px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 4;
+      font-size: 11px;
+      color: rgba(0,168,255,.55);
+      font-style: italic;
+      letter-spacing: .5px;
+      white-space: nowrap;
+      pointer-events: none;
+      max-width: 70vw;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      text-align: center;
+    }
+    .interim-float:not(:empty)::before { content: '◈  '; color: rgba(0,255,136,.5); }
+
+    /* Brain activity indicators */
+    .brain-strip {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      align-items: center;
+      margin-bottom: 7px;
+    }
+    .bdot {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 7px;
+      letter-spacing: 1.2px;
+      opacity: .22;
+      transition: opacity .4s, text-shadow .4s;
+    }
+    .bdot span { width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
+    .bdot.lit { opacity: 1; }
+    .bdot.lit span { animation: brainPulse 1s infinite; }
+    @keyframes brainPulse {
+      0%,100% { transform: scale(1); }
+      50% { transform: scale(1.6); }
+    }
+    .bdot.claude { color: #00a8ff; } .bdot.claude span { background:#00a8ff; box-shadow:0 0 6px #00a8ff; }
+    .bdot.llama  { color: #00ff88; } .bdot.llama  span { background:#00ff88; box-shadow:0 0 6px #00ff88; }
+    .bdot.qwen   { color: #cc44ff; } .bdot.qwen   span { background:#cc44ff; box-shadow:0 0 6px #cc44ff; }
+    .bdot.coder  { color: #ff9900; } .bdot.coder  span { background:#ff9900; box-shadow:0 0 6px #ff9900; }
+
+    /* Footer input strip */
+    .hud-footer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      z-index: 4;
+      background: rgba(2,8,16,.82);
+      border-top: 1px solid rgba(0,168,255,.15);
+      backdrop-filter: blur(10px);
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #text-input {
+      flex: 1;
+      background: rgba(0,20,40,.5);
+      border: 1px solid rgba(0,168,255,.18);
+      border-radius: 4px;
+      color: rgba(127,219,255,.8);
+      font-size: 12px;
+      padding: 6px 12px;
+      outline: none;
+      font-family: inherit;
+      transition: border-color .2s;
+    }
+    #text-input:focus { border-color: rgba(0,168,255,.45); }
+    #text-input::placeholder { color: rgba(42,90,114,.4); }
+
+    button {
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      padding: 6px 12px;
+      text-transform: uppercase;
+      transition: filter .15s, transform .1s;
+      font-family: inherit;
+    }
+    button:hover:not(:disabled) { filter: brightness(1.3); }
+    button:active:not(:disabled) { transform: scale(.95); }
+    button:disabled { opacity: .25; cursor: default; }
+
+    #send-btn {
+      background: rgba(0,168,255,.12);
+      border: 1px solid rgba(0,168,255,.3);
+      color: #00a8ff;
+    }
+    #reset-btn {
+      background: transparent;
+      border: 1px solid rgba(255,70,0,.15);
+      color: rgba(255,70,0,.4);
+      padding: 6px 9px;
+      font-size: 8px;
+    }
+    #reset-btn:hover { border-color: rgba(255,70,0,.4); color: #ff6633; }
+    #cancel-btn {
+      background: rgba(255,70,0,.08);
+      border: 1px solid rgba(255,70,0,.25);
+      color: #ff6633;
+    }
+    #vox-btn {
+      background: transparent;
+      border: 1px solid rgba(0,168,255,.15);
+      color: rgba(42,90,114,.7);
+      padding: 6px 9px;
+    }
+    #vox-btn.active { border-color: rgba(0,255,136,.3); color: #00ff88; }
+
+    /* ── Tap-to-wake overlay (mobile) ─────────────────── */
+    #wake-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(2,8,16,.92);
+      cursor: pointer;
+      gap: 20px;
+    }
+    #wake-overlay.hidden { display: none; }
+    .wake-logo {
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 8px;
+      color: #00a8ff;
+      text-shadow: 0 0 30px rgba(0,168,255,.8);
+    }
+    .wake-ring {
+      width: 100px; height: 100px;
+      border-radius: 50%;
+      border: 2px solid rgba(0,168,255,.3);
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+      animation: wakeBreath 2.5s ease-in-out infinite;
+    }
+    .wake-ring::before, .wake-ring::after {
+      content: '';
+      position: absolute;
+      inset: -12px;
+      border-radius: 50%;
+      border: 1px solid rgba(0,168,255,.15);
+      animation: wakeRipple 2.5s ease-out infinite;
+    }
+    .wake-ring::after { animation-delay: 1.2s; }
+    @keyframes wakeBreath {
+      0%,100% { transform: scale(1); border-color: rgba(0,168,255,.3); }
+      50% { transform: scale(1.05); border-color: rgba(0,168,255,.6); }
+    }
+    @keyframes wakeRipple {
+      0% { transform: scale(1); opacity: .5; }
+      100% { transform: scale(1.5); opacity: 0; }
+    }
+    .wake-mic { font-size: 36px; }
+    .wake-hint {
+      font-size: 10px;
+      letter-spacing: 3px;
+      color: rgba(0,168,255,.5);
+      text-transform: uppercase;
+    }
+
+    /* ── Mobile responsive ─────────────────────────────── */
+    @media (max-width: 600px) {
+      .jarvis-logo { font-size: 10px; letter-spacing: 5px; top: 14px; }
+      .state-badge { font-size: 7px; bottom: 90px; right: 12px; }
+      .mic-orb { bottom: 72px; left: 14px; width: 20px; height: 20px; }
+      .interim-float { font-size: 10px; bottom: 72px; max-width: 80vw; }
+      .hud-footer { padding: 8px 10px 12px; }
+      .brain-strip { gap: 8px; margin-bottom: 6px; }
+      .bdot { font-size: 7px; gap: 3px; }
+      .bdot span { width: 4px; height: 4px; }
+      .input-row { gap: 5px; }
+      #text-input { font-size: 13px; padding: 8px 10px; }
+      #send-btn, #cancel-btn, #vox-btn, #reset-btn { padding: 8px 10px; font-size: 9px; }
+      .corner { width: 18px; height: 18px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Tap-to-wake: shown on mobile until user taps -->
+<div id="wake-overlay">
+  <div class="wake-logo">J.A.R.V.I.S.</div>
+  <div class="wake-ring"><div class="wake-mic">🎤</div></div>
+  <div class="wake-hint">Tap to activate</div>
+</div>
+
+<canvas id="neural-canvas"></canvas>
+<div class="scanlines"></div>
+
+<div class="corner corner-tl"></div>
+<div class="corner corner-tr"></div>
+<div class="corner corner-bl"></div>
+<div class="corner corner-br"></div>
+
+<div class="jarvis-logo">J.A.R.V.I.S.</div>
+<div class="state-badge" id="state-badge">STANDBY</div>
+
+<div class="mic-orb">
+  <div class="mic-ripple" id="mr1"></div>
+  <div class="mic-ripple" id="mr2"></div>
+  <div class="mic-ripple" id="mr3"></div>
+  <div class="mic-core"  id="mic-core"></div>
+</div>
+
+<div class="interim-float" id="interim"></div>
+
+<footer class="hud-footer">
+  <div class="brain-strip">
+    <div class="bdot claude" id="bd-claude"><span></span>CLAUDE</div>
+    <div class="bdot llama"  id="bd-llama" ><span></span>LLAMA3</div>
+    <div class="bdot coder"  id="bd-coder" ><span></span>OPENCLAW</div>
+  </div>
+  <div class="input-row">
+    <input id="text-input" type="text" placeholder="speak or type…" autocomplete="off" />
+    <button id="vox-btn" class="active">VOX</button>
+    <button id="send-btn">Send</button>
+    <button id="cancel-btn">Abort</button>
+    <button id="reset-btn" title="Clear conversation memory">MEM ✕</button>
+  </div>
+</footer>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════════════
+//  NEURAL CANVAS  —  spatial-hash O(N) renderer
+// ═══════════════════════════════════════════════════════════
+const canvas = document.getElementById('neural-canvas');
+const ctx    = canvas.getContext('2d');
+
+const N          = 2800;
+const REACH      = 52;          // short reach → many local edges, cheap with grid
+const REACH2     = REACH * REACH;
+const MAX_PULSES = 500;
+const CELL       = REACH;       // grid cell size = reach
+
+let W, H;
+let nodes  = [];
+let pulses = [];
+let activity = 0.04, actTarget = 0.04, speedMult = 0.05;
+
+// Breath + voice reactivity
+let breathPhase = 0;
+let voicePhase  = 0;
+let voiceEnergy = 0;
+let isSpeaking  = false;
+
+// Spatial grid
+let gridW = 0, gridH = 0, grid = [];
+
+function buildGrid() {
+  gridW = Math.ceil(W / CELL) + 2;
+  gridH = Math.ceil(H / CELL) + 2;
+  grid  = new Array(gridW * gridH);
+  for (let i = 0; i < grid.length; i++) grid[i] = [];
+}
+
+function fillGrid() {
+  for (let i = 0; i < grid.length; i++) grid[i].length = 0;
+  for (let i = 0; i < N; i++) {
+    const cx = Math.floor(nodes[i].x / CELL) + 1;
+    const cy = Math.floor(nodes[i].y / CELL) + 1;
+    if (cx >= 0 && cx < gridW && cy >= 0 && cy < gridH)
+      grid[cy * gridW + cx].push(i);
+  }
+}
+
+function initCanvas() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  nodes  = [];
+  pulses = [];
+
+  // Spread nodes across 85% of the screen for a full brain effect
+  const sx = W * .42, sy = H * .42;
+  for (let i = 0; i < N; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = Math.sqrt(Math.random()); // uniform density
+    nodes.push({
+      x:   W * .5 + Math.cos(a) * sx * r,
+      y:   H * .5 + Math.sin(a) * sy * r,
+      vx: (Math.random() - .5) * 1.2,
+      vy: (Math.random() - .5) * 1.2,
+      rad: 1.0 + Math.random() * 2.2,
+      act: 0, actT: 0,
+    });
+  }
+  buildGrid();
+}
+
+function neuralFrame() {
+  requestAnimationFrame(neuralFrame);
+
+  activity  += (actTarget - activity) * .025;
+  speedMult  = 0.04 + activity * 0.96;
+
+  // ── Voice energy simulation ─────────────────────────
+  if (isSpeaking) {
+    voicePhase  += 0.13 + Math.random() * 0.12;
+    const v = (Math.sin(voicePhase) * 0.5 + 0.5) * (0.4 + Math.random() * 0.6);
+    voiceEnergy += (v - voiceEnergy) * 0.20;
+  } else {
+    voiceEnergy *= 0.88;
+  }
+
+  // ── Breath oscillator ───────────────────────────────
+  breathPhase += 0.007 + activity * 0.018 + voiceEnergy * 0.055;
+  const breathAmp   = 0.04 + activity * 0.06 + voiceEnergy * 0.32;
+  const breathForce = Math.sin(breathPhase) * breathAmp;
+
+  // Very gentle fade
+  ctx.fillStyle = `rgba(2,8,16,${.04 + activity * .10})`;
+  ctx.fillRect(0, 0, W, H);
+
+  // ── Update node positions ───────────────────────────
+  for (let i = 0; i < N; i++) {
+    const n = nodes[i];
+    n.x += n.vx * speedMult;
+    n.y += n.vy * speedMult;
+
+    // Gentle pull to centre
+    n.vx += (W * .5 - n.x) * .00008;
+    n.vy += (H * .5 - n.y) * .00008;
+
+    // ── Breath: radial push/pull from centre ──────────
+    const rdx  = n.x - W * .5;
+    const rdy  = n.y - H * .5;
+    const rdst = Math.sqrt(rdx * rdx + rdy * rdy) || 1;
+    n.vx += (rdx / rdst) * breathForce;
+    n.vy += (rdy / rdst) * breathForce;
+
+    // Speed cap — higher when speaking
+    const cap = 1.6 + voiceEnergy * 1.4;
+    const spd = Math.sqrt(n.vx * n.vx + n.vy * n.vy);
+    if (spd > cap) { n.vx *= cap / spd; n.vy *= cap / spd; }
+
+    // Soft wall bounce
+    if (Math.abs(n.x - W * .5) > W * .47) n.vx *= -.9;
+    if (Math.abs(n.y - H * .5) > H * .47) n.vy *= -.9;
+
+    // Activation floor so nodes never vanish
+    if (Math.abs(n.act - n.actT) < .01) n.actT = 0.15 + Math.random() * Math.max(activity, 0.15);
+    n.act += (n.actT - n.act) * (.007 + activity * .04 + voiceEnergy * .03);
+  }
+
+  // ── Populate spatial grid ───────────────────────────
+  fillGrid();
+
+  // ── Draw edges (single batched path) ───────────────
+  let edgeCount = 0;
+  const toSpawn = []; // [fromIdx, toIdx] pairs to maybe spawn pulses on
+
+  ctx.beginPath();
+  for (let i = 0; i < N; i++) {
+    const ni = nodes[i];
+    const cx = Math.floor(ni.x / CELL) + 1;
+    const cy = Math.floor(ni.y / CELL) + 1;
+
+    // Check 9 surrounding cells; j > i avoids duplicate pairs
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const cell = grid[(cy + dy) * gridW + (cx + dx)];
+        if (!cell) continue;
+        for (const j of cell) {
+          if (j <= i) continue;
+          const ddx = nodes[j].x - ni.x;
+          const ddy = nodes[j].y - ni.y;
+          if (ddx * ddx + ddy * ddy < REACH2) {
+            edgeCount++;
+            ctx.moveTo(ni.x, ni.y);
+            ctx.lineTo(nodes[j].x, nodes[j].y);
+            if (toSpawn.length < 20 && Math.random() < .004 * activity)
+              toSpawn.push(i, j);
+          }
+        }
+      }
+    }
+  }
+  ctx.strokeStyle = `rgba(0,110,230,${.07 + activity * .28})`;
+  ctx.lineWidth   = .3 + activity * .55;
+  ctx.stroke();
+
+  // ── Draw nodes ──────────────────────────────────────
+  for (let i = 0; i < N; i++) {
+    const n = nodes[i];
+    const bright = n.act * (0.4 + activity * 0.6);
+    const g = 110 + Math.round(bright * 145);
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, n.rad * (1 + n.act * .4), 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(0,${g},255,${.30 + bright * .60})`;
+    ctx.fill();
+  }
+
+  // ── Pulse glow pass (small subset — keep MAX_PULSES cap) ─
+  for (let k = 0; k < toSpawn.length - 1 && pulses.length < MAX_PULSES; k += 2) {
+    const fi = toSpawn[k], ti = toSpawn[k + 1];
+    const fwd = Math.random() > .5;
+    pulses.push({
+      from: fwd ? nodes[fi] : nodes[ti],
+      to:   fwd ? nodes[ti] : nodes[fi],
+      t: 0,
+      spd: (.012 + Math.random() * .016) * (.3 + speedMult * 1.4),
+    });
+  }
+
+  const nextPulses = [];
+  // Batch pulse dots
+  ctx.fillStyle = `rgba(0,255,210,${.7 + activity * .3})`;
+  for (const p of pulses) {
+    p.t += p.spd;
+    if (p.t < 1) {
+      const x = p.from.x + (p.to.x - p.from.x) * p.t;
+      const y = p.from.y + (p.to.y - p.from.y) * p.t;
+      ctx.beginPath();
+      ctx.arc(x, y, 1.8 + activity, 0, Math.PI * 2);
+      ctx.fill();
+      nextPulses.push(p);
+    }
+  }
+  pulses = nextPulses;
+}
+
+window.addEventListener('resize', () => { initCanvas(); });
+initCanvas();
+neuralFrame();
+
+
+// ═══════════════════════════════════════════════════════════
+//  STATE MACHINE
+// ═══════════════════════════════════════════════════════════
+const ST = { STANDBY: 'STANDBY', LISTENING: 'LISTENING', THINKING: 'THINKING', SPEAKING: 'SPEAKING' };
+const ST_CFG = {
+  STANDBY:  { act: .04, color: 'rgba(0,255,136,.4)',  shadow: 'rgba(0,255,136,.15)' },
+  LISTENING:{ act: .48, color: 'rgba(0,168,255,.6)',  shadow: 'rgba(0,168,255,.2)'  },
+  THINKING: { act: .92, color: 'rgba(255,153,0,.7)',  shadow: 'rgba(255,153,0,.25)' },
+  SPEAKING: { act: 1.0, color: 'rgba(0,255,221,.75)', shadow: 'rgba(0,255,221,.3)'  },
+};
+
+function setState(s) {
+  const c  = ST_CFG[s];
+  actTarget  = c.act;
+  isSpeaking = (s === ST.SPEAKING);
+
+  const el = document.getElementById('state-badge');
+  el.textContent      = s;
+  el.style.color      = c.color;
+  el.style.textShadow = `0 0 12px ${c.shadow}`;
+
+  const hot = (s === ST.THINKING || s === ST.SPEAKING);
+  document.getElementById('mic-core').classList.toggle('hot', hot);
+  document.querySelectorAll('.mic-ripple').forEach(r => r.classList.toggle('hot', hot));
+
+  // Brain dot indicators — all lit when thinking or speaking
+  const lit = (s === ST.THINKING || s === ST.SPEAKING);
+  ['bd-claude','bd-llama','bd-coder'].forEach(id => {
+    document.getElementById(id).classList.toggle('lit', lit);
+  });
+}
+setState(ST.STANDBY);
+
+
+// ═══════════════════════════════════════════════════════════
+//  VOICE OUTPUT — JARVIS VOICE
+// ═══════════════════════════════════════════════════════════
+let speakEnabled = true;
+let jarvisVoice  = null;
+
+function pickVoice() {
+  const voices = speechSynthesis.getVoices();
+  if (!voices.length) { setTimeout(pickVoice, 200); return; } // mobile loads async
+  const order = [
+    v => v.name === 'Google UK English Male',
+    v => v.name.includes('Daniel') && v.lang.startsWith('en-GB'),
+    v => v.name.includes('George') && v.lang.startsWith('en-GB'),
+    v => v.name.includes('James')  && v.lang.startsWith('en-GB'),
+    v => v.lang === 'en-GB' && !v.name.match(/female|zira|hazel/i),
+    v => v.lang === 'en-GB',
+    v => v.name.toLowerCase().includes('david') && v.lang.startsWith('en'),
+    v => v.lang.startsWith('en'),
+  ];
+  for (const fn of order) {
+    const m = voices.find(fn);
+    if (m) { jarvisVoice = m; break; }
+  }
+}
+speechSynthesis.addEventListener('voiceschanged', pickVoice);
+pickVoice();
+
+function speakText(text, onDone) {
+  if (!window.speechSynthesis) { onDone?.(); return; }
+  speechSynthesis.cancel();
+
+  const clean = text
+    .replace(/```[\s\S]*?```/g, 'code block omitted.')
+    .replace(/[#*`_>~]/g, '')
+    .replace(/\n+/g, '. ')
+    .slice(0, 1400);
+
+  const utt = new SpeechSynthesisUtterance(clean);
+  if (jarvisVoice) utt.voice = jarvisVoice;
+  utt.pitch  = 0.82;
+  utt.rate   = 0.90;
+  utt.volume = 1;
+
+  // Timeout fallback — mobile TTS can silently fail without firing onend
+  const maxMs = Math.max(6000, clean.length * 60);
+  const timer = setTimeout(() => {
+    speechSynthesis.cancel();
+    onDone?.();
+  }, maxMs);
+
+  utt.onend  = () => { clearTimeout(timer); onDone?.(); };
+  utt.onerror = () => { clearTimeout(timer); onDone?.(); };
+  speechSynthesis.speak(utt);
+}
+
+// Chrome Android silently pauses speechSynthesis — kick it every 5s
+setInterval(() => {
+  if (speechSynthesis.speaking && !speechSynthesis.paused) speechSynthesis.resume();
+}, 5000);
+
+document.getElementById('vox-btn').addEventListener('click', () => {
+  speakEnabled = !speakEnabled;
+  document.getElementById('vox-btn').classList.toggle('active', speakEnabled);
+  if (!speakEnabled) speechSynthesis.cancel();
+});
+
+
+// ═══════════════════════════════════════════════════════════
+//  API COMMUNICATION  (fetch + SSE, no WebSocket)
+// ═══════════════════════════════════════════════════════════
+let isRunning = false;
+let currentController = null;
+const history = [];
+const MAX_HISTORY    = 8;
+const MAX_HIST_CHARS = 300;
+
+async function submitCommand(cmd) {
+  if (!cmd || isRunning) return;
+  stopListening();
+  accumulatedFinal = '';
+  document.getElementById('interim').textContent = '';
+  document.getElementById('text-input').value = '';
+  clearTimeout(submitTimer);
+
+  isRunning = true;
+  setState(ST.THINKING);
+
+  history.push({ role: 'user', content: cmd });
+  while (history.length > MAX_HISTORY) history.shift();
+
+  currentController = new AbortController();
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: cmd,
+        history: history.slice(0, -1).map(h => ({
+          role: h.role,
+          content: h.content.slice(0, MAX_HIST_CHARS),
+        })),
+      }),
+      signal: currentController.signal,
+    });
+
+    if (!res.ok) throw new Error('API error');
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop();
+      for (const part of parts) {
+        if (!part.startsWith('data: ')) continue;
+        let msg;
+        try { msg = JSON.parse(part.slice(6)); } catch { continue; }
+
+        if (msg.type === 'done') {
+          const fullText = msg.text;
+          history.push({ role: 'assistant', content: fullText });
+          while (history.length > MAX_HISTORY) history.shift();
+          isRunning = false;
+
+          if (speakEnabled) {
+            setState(ST.SPEAKING);
+            isSpeaking = true;
+            let audioPlayed = false;
+            try {
+              const ttsRes = await fetch('/api/tts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: fullText }),
+              });
+              if (ttsRes.ok) {
+                const { audio } = await ttsRes.json();
+                if (audio) {
+                  audioPlayed = true;
+                  const audioEl = new Audio('data:audio/mp3;base64,' + audio);
+                  const onDone = () => { isSpeaking = false; setState(ST.LISTENING); startListening(); };
+                  audioEl.onended = onDone;
+                  audioEl.onerror = () => { isSpeaking = false; speakText(fullText, () => { setState(ST.LISTENING); startListening(); }); };
+                  audioEl.play().catch(() => { isSpeaking = false; speakText(fullText, () => { setState(ST.LISTENING); startListening(); }); });
+                }
+              }
+            } catch {}
+            if (!audioPlayed) {
+              isSpeaking = false;
+              speakText(fullText, () => { setState(ST.LISTENING); startListening(); });
+            }
+          } else {
+            setState(ST.LISTENING);
+            startListening();
+          }
+          return;
+        }
+
+        if (msg.type === 'error') {
+          if (history.length && history[history.length - 1].role === 'user') history.pop();
+          isRunning = false;
+          setState(ST.LISTENING);
+          startListening();
+          return;
+        }
+      }
+    }
+  } catch (err) {
+    if (err.name !== 'AbortError') console.error('[Jarvis]', err.message);
+    if (history.length && history[history.length - 1].role === 'user') history.pop();
+    isRunning = false;
+    setState(ST.LISTENING);
+    startListening();
+  }
+}
+
+document.getElementById('send-btn').addEventListener('click', () => {
+  submitCommand(document.getElementById('text-input').value.trim());
+});
+document.getElementById('text-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); submitCommand(document.getElementById('text-input').value.trim()); }
+});
+document.getElementById('cancel-btn').addEventListener('click', () => {
+  if (currentController) currentController.abort();
+  if (history.length && history[history.length - 1].role === 'user') history.pop();
+  isRunning = false;
+  setState(ST.LISTENING);
+  startListening();
+});
+document.getElementById('reset-btn').addEventListener('click', () => {
+  if (currentController) currentController.abort();
+  history.length = 0;
+  isRunning = false;
+  setState(ST.STANDBY);
+});
+
+
+// ═══════════════════════════════════════════════════════════
+//  ALWAYS-ON VOICE INPUT
+// ═══════════════════════════════════════════════════════════
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognition = null, recognizing = false, micEnabled = true;
+let accumulatedFinal = '', submitTimer = null;
+
+if (SR) {
+  recognition = new SR();
+  recognition.continuous     = true;
+  recognition.interimResults = true;
+  recognition.lang           = 'en-US';
+
+  recognition.onstart = () => {
+    recognizing = true;
+    if (!isRunning) setState(ST.LISTENING);
+  };
+
+  recognition.onresult = (e) => {
+    if (isRunning) return;
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) {
+        accumulatedFinal += e.results[i][0].transcript + ' ';
+        clearTimeout(submitTimer);
+        submitTimer = setTimeout(() => {
+          const cmd = accumulatedFinal.trim();
+          accumulatedFinal = '';
+          document.getElementById('interim').textContent = '';
+          document.getElementById('text-input').value = '';
+          if (cmd) submitCommand(cmd);
+        }, 1500);
+      } else {
+        interim += e.results[i][0].transcript;
+      }
+    }
+    const full = (accumulatedFinal + interim).trim();
+    document.getElementById('interim').textContent = full;
+    document.getElementById('text-input').value = full;
+  };
+
+  recognition.onend = () => {
+    recognizing = false;
+    // Mobile Chrome kills continuous recognition after silence — restart fast
+    if (micEnabled && !isRunning) setTimeout(startListening, isMobile ? 80 : 350);
+  };
+
+  recognition.onerror = (e) => {
+    recognizing = false;
+    if (e.error === 'not-allowed') {
+      micEnabled = false;
+      document.getElementById('mic-label').textContent = 'BLOCKED';
+      return;
+    }
+    // 'network' errors are common on mobile — retry quickly
+    const delay = (e.error === 'network' || e.error === 'aborted') ? 200 : 600;
+    if (micEnabled && !isRunning) setTimeout(startListening, delay);
+  };
+}
+
+function startListening() {
+  if (!recognition || recognizing || !micEnabled) return;
+  try { recognition.start(); } catch {}
+}
+function stopListening() {
+  if (!recognition || !recognizing) return;
+  try { recognition.stop(); } catch {}
+}
+
+// ── Wake overlay ────────────────────────────────────────
+// On desktop, dismiss immediately. On mobile, require a tap
+// so the browser grants mic permission via a user gesture.
+const wakeOverlay = document.getElementById('wake-overlay');
+const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+
+function dismissWake() {
+  wakeOverlay.classList.add('hidden');
+
+  // Unlock Web Speech Synthesis with a silent utterance on this user gesture.
+  // Mobile browsers block speechSynthesis.speak() unless called inside a tap/click.
+  if (window.speechSynthesis) {
+    const unlock = new SpeechSynthesisUtterance('');
+    unlock.volume = 0;
+    window.speechSynthesis.speak(unlock);
+  }
+
+  startListening();
+}
+
+if (isMobile) {
+  // Show overlay on mobile — wait for tap
+  wakeOverlay.addEventListener('click', dismissWake, { once: true });
+  wakeOverlay.addEventListener('touchend', dismissWake, { once: true, passive: true });
+} else {
+  // Desktop: hide overlay immediately and start mic
+  dismissWake();
+}
+</script>
+</body>
+</html>

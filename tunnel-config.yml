@@ -1,0 +1,9 @@
+tunnel: jarvis
+credentials-file: C:\Users\fabio.almeida\.cloudflared\2f6628c6-8659-4fb2-99e5-97da39619f51.json
+
+ingress:
+  - hostname: jarvis.flowlog.dev
+    service: http://localhost:3001
+    originRequest:
+      noTLSVerify: false
+  - service: http_status:404
